@@ -1,0 +1,343 @@
+---
+title: "站点自动分类器使用说明以及性能分析"
+author: "Lemon"
+date: '`r Sys.Date()`'
+output:
+  html_document:
+    highlight: monochrome
+---
+
+## 使用步骤
+
+### 训练模块
+执行shell 文件 trAndCre.sh，如：
+
+![](./imgs/trAndCre.png)
+
+参数说明：trAndCre.sh  [,inputDataFile , configureFile , n_gram ]
+
+```
+inputDataFile ： 输入的数据文件 
+configureFile ： 配置文件，配置 模型 ，词汇表类型表存放路径，以及其他一些控制信息。（文档后面有具体说明）
+n_gram  ： 目前只支持1 和 2 这两个值  
+```
+
+其中 inputDataFile 的数据格式是 label content ，如图:
+
+![](./imgs/inputDataFile.png)
+
+### 预测模块
+执行shell 文件 blackBox.sh ， 如：
+
+![](./imgs/blackBox.png)
+
+参数说明：blackBox.sh  [inputDataFile_noLabel, configureFile ,  n_gram  ,  resultFileName]
+
+```
+inputDataFile_noLabel ：需要分类的content文件
+configureFile ：配置文件 ，告诉黑盒子使用哪个模型，哪个词汇表类型表，以及载入一些控制字符串
+n_gram  ： 1 或 2
+resultFileName : 将模型的输出结果存储到这个文件
+```
+
+其中 inputDataFile_noLabel 中的数据格式如下 
+
+![](./imgs/inputDataFile_noLabel.png)
+
+输出的resultFileName 文件内容如下：
+
+![](./imgs/resultFile.jpg)
+
+#### 配置文件
+
+含有 路径以及控制字符串等信息 ，可用“//” 做注释 如图：
+
+![](./imgs/config.png)
+
+**注意：**
+
+1、分号“：” 前面（包括分号）的字符串是不能改动的。
+
+2、对于train_commandLine 说明如下：
+
+```
+Train a model from data (y, x) or a problem prob using
+'options' or a parameter param.
+If '-v' is specified in 'options' (i.e., cross validation)
+either accuracy (ACC) or mean-squared error (MSE) is returned.
+
+options:
+  -s type : set type of solver (default 1)
+	  for multi-class classification
+		 0 -- L2-regularized logistic regression (primal)
+		 1 -- L2-regularized L2-loss support vector classification (dual)
+		 2 -- L2-regularized L2-loss support vector classification (primal)
+		 3 -- L2-regularized L1-loss support vector classification (dual)
+		 4 -- support vector classification by Crammer and Singer
+		 5 -- L1-regularized L2-loss support vector classification
+		 6 -- L1-regularized logistic regression
+		 7 -- L2-regularized logistic regression (dual)
+	  for regression
+		11 -- L2-regularized L2-loss support vector regression (primal)
+		12 -- L2-regularized L2-loss support vector regression (dual)
+		13 -- L2-regularized L1-loss support vector regression (dual)
+	-c cost : set the parameter C (default 1)
+	-p epsilon : set the epsilon in loss function of SVR (default 0.1)
+	-e epsilon : set tolerance of termination criterion
+		-s 0 and 2
+			|f'(w)|_2 <= eps*min(pos,neg)/l*|f'(w0)|_2,
+			where f is the primal function, (default 0.01)
+		-s 11
+			|f'(w)|_2 <= eps*|f'(w0)|_2 (default 0.001)
+		-s 1, 3, 4, and 7
+			Dual maximal violation <= eps; similar to liblinear (default 0.)
+		-s 5 and 6
+			|f'(w)|_inf <= eps*min(pos,neg)/l*|f'(w0)|_inf,
+			where f is the primal function (default 0.01)
+		-s 12 and 13
+			|f'(alpha)|_1 <= eps |f'(alpha0)|,
+			where f is the dual function (default 0.1)
+	-B bias : if bias >= 0, instance x becomes [x; bias]; if < 0, no bias term added (default -1)
+	-wi weight: weights adjust the parameter C of different classes (see README for details)
+	-v n: n-fold cross validation mode
+    -q : quiet mode (no outputs)
+```
+
+3、对于predict_options 说明如下：
+
+```
+options:
+      -b probability_estimates: whether to output probability estimates, 0 or 1 (default 0); currently for logistic regression only
+	    -q quiet mode (no outputs)
+
+	The return tuple contains
+	p_labels: a list of predicted labels
+	p_acc: a tuple including  accuracy (for classification), mean-squared
+	       error, and squared correlation coefficient (for regression).
+	p_vals: a list of decision values or probability estimates (if '-b 1'
+	        is specified). If k is the number of classes, for decision values,
+	        each element includes results of predicting k binary-class
+	        SVMs. if k = 2 and solver is not MCSVM_CS, only one decision value
+	        is returned. For probabilities, each element contains k values
+	        indicating the probability that the testing instance is in each class.
+	        Note that the order of classes here is the same as 'model.label'
+	        field in the model structure.
+```
+
+## 性能分析
+
+### 配置1
+
+使用LR 模型，启用TF-IDF 
+``` 
+train_commandLine : -s 0  
+TF_IDF_flag : True 
+Predict_options : -q
+```
+
+#### 训练和预测都是1 gram
+<script src="http://s1.bdstatic.com/r/www/cache/ecom/esl/1-6-10/esl.js"></script>
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G1_TFIDF_s0LR"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+#### 训练和预测都是2 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G2_TFIDF_s0LR"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+
+### 配置2
+使用LR 模型，不启用TF-IDF 
+
+```
+train_commandLine : -s 0  
+TF_IDF_flag : False 
+Predict_options : -q
+```
+
+#### 训练和预测都是1 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G1_noTFIDF_s0LR"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+#### 训练和预测都是2 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G2_noTFIDF_s0LR"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+
+### 配置3
+
+使用SVM模型，启用TF-IDF 
+```
+train_commandLine : -s 1 
+TF_IDF_flag : True 
+Predict_options : -q
+```
+
+#### 训练和预测都是1 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G1_TFIDF_s1SVM"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+#### 训练和预测都是2 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G2_TFIDF_s1SVM"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+
+### 配置4
+
+使用SVM模型，不启用TF-IDF 
+```
+train_commandLine : -s 1 
+TF_IDF_flag : False 
+Predict_options : -q
+```
+
+#### 训练和预测都是1 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G1_noTFIDF_s1SVM"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
+
+#### 训练和预测都是2 gram
+
+```{r, results='asis', echo=FALSE}
+library(tarrenmills)
+method <- "G2_noTFIDF_s1SVM"
+svm.result <- read.table(paste(method,"/statisticForClassRWT.txt",sep=""), header = T)
+names(svm.result) <- c("category", "correct", "wrong", "total")
+svm.result$percent <- 100 * svm.result$correct / (svm.result$correct + svm.result$wrong)
+p1 <- ecplot(title = list(text = method))
+series1 <- ecseries(svm.result$category, svm.result$correct, type = "line", name = "判断正确")
+series2 <- ecseries(svm.result$category, svm.result$total, type = "line", name = "总样本数")
+series3 <- ecseries(svm.result$category, svm.result$percent, type = "line", name = "准确率", yAxisIndex = 1)
+p1 <- add_series(p1, series1)
+p1 <- add_series(p1, series2)
+p1 <- add_series(p1, series3)
+p1$xAxis[[1]][['axisLabel']] <- list(rotate = 35)
+p1$yAxis[[1]][['name']] <- '样本数'
+p1$yAxis[[2]][['name']] <- '准确率'
+p1$yAxis[[2]][['axisLabel']] <- list(formatter = '{value}%')
+p1
+```
